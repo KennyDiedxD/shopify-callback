@@ -1,7 +1,8 @@
 {
   "functions": {
-    "api/*.js": {
-      "runtime": "nodejs20.x"
-    }
-  }
+    "api/*": { "runtime": "nodejs20.x" }
+  },
+  "routes": [
+    { "src": "^/api/callback$", "dest": "/api/callback.cjs" }
+  ]
 }
