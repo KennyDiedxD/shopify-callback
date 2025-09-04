@@ -1,8 +1,6 @@
 {
-  "functions": {
-    "api/*": { "runtime": "nodejs20.x" }
-  },
+  "functions": { "api/*": { "runtime": "nodejs20.x" } },
   "routes": [
-    { "src": "^/api/callback$", "dest": "/api/callback.cjs" }
+    { "src": "^/api/shopify-callback$", "dest": "/api/callback.cjs" }
   ]
 }
