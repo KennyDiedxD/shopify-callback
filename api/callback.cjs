@@ -42,11 +42,10 @@ module.exports = async (req, res) => {
       return res.end("Missing required query parameters.");
     }
 
-    // CSRF protection — DEBUG
+    // CSRF protection 
 if (!process.env.EXPECTED_STATE || state !== process.env.EXPECTED_STATE) {
   res.statusCode = 403;
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  return res.end("Invalid state DEBUG v1"); // <-- unique message
+  return res.end("Invalid state.");
 }
 
     // Authenticity (query HMAC)
