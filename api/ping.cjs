@@ -1,6 +1,4 @@
-// api/ping.cjs
-module.exports = (req, res) => {
-  res.statusCode = 200;
-  res.setHeader("Content-Type","application/json");
-  res.end(JSON.stringify({ ok: true, at: new Date().toISOString() }));
+﻿module.exports = (req, res) => {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.end("root-api-ok");
 };
