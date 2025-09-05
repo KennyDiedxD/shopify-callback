@@ -115,6 +115,32 @@ module.exports = async (req, res) => {
       scope: tokenData.scope || "",
       installed_at: Date.now()
     });
+// Register uninstall webhook (requires write_webhooks scope)
+try {
+  const apiVersion = "2024-07"; // keep consistent with your project
+  const webhookResp = await fetch(`https://${shop}/admin/api/${apiVersion}/webhooks.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({
+      webhook: {
+        topic: "app/uninstalled",
+        address: "https://shopify-callback.vercel.app/api/webhooks/uninstalled",
+        format: "json"
+      }
+    })
+  });
+
+  if (!webhookResp.ok) {
+    const txt = await webhookResp.text();
+    console.warn("Webhook registration failed:", webhookResp.status, txt);
+    // Not fatal for install; you can continue
+  }
+} catch (err) {
+  console.warn("Webhook registration error:", err);
+}
 
     // 8) Show success (or redirect to your UI)
     const masked = token ? token.slice(0, 6) + "…(hidden)…" + token.slice(-4) : "N/A";
