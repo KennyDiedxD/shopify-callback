@@ -1,6 +1,7 @@
 {
   "functions": { "api/**": { "runtime": "@vercel/node@2.0.0" } },
   "routes": [
+    { "src": "^/api/start-install$", "dest": "/api/start-install.cjs" },
     { "src": "^/api/callback$", "dest": "/api/callback.cjs" }
   ]
 }
