@@ -46,11 +46,8 @@ module.exports = async (req, res) => {
 if (!process.env.EXPECTED_STATE || state !== process.env.EXPECTED_STATE) {
   res.statusCode = 403;
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  return res.end(
-    `Invalid state. got="${state}" expected="${process.env.EXPECTED_STATE || "(unset)"}"`
-  );
+  return res.end("Invalid state DEBUG v1"); // <-- unique message
 }
-
 
     // Authenticity (query HMAC)
     if (!validHmac(q, process.env.SHOPIFY_API_SECRET)) {
