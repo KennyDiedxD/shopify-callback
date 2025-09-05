@@ -1,7 +1,5 @@
 {
-  "functions": {
-    "api/**": { "runtime": "@vercel/node@2.0.0" }
-  },
+  "functions": { "api/**": { "runtime": "@vercel/node@2.0.0" } },
   "routes": [
     { "src": "^/api/callback$", "dest": "/api/callback.cjs" },
     { "src": "^/api/echo-state$", "dest": "/api/echo-state.cjs" }
