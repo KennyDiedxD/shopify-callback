@@ -42,11 +42,15 @@ module.exports = async (req, res) => {
       return res.end("Missing required query parameters.");
     }
 
-    // CSRF protection — must match your Vercel env EXPECTED_STATE (for now)
-    if (!process.env.EXPECTED_STATE || state !== process.env.EXPECTED_STATE) {
-      res.statusCode = 403;
-      return res.end("Invalid state.");
-    }
+    // CSRF protection — DEBUG
+if (!process.env.EXPECTED_STATE || state !== process.env.EXPECTED_STATE) {
+  res.statusCode = 403;
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  return res.end(
+    `Invalid state. got="${state}" expected="${process.env.EXPECTED_STATE || "(unset)"}"`
+  );
+}
+
 
     // Authenticity (query HMAC)
     if (!validHmac(q, process.env.SHOPIFY_API_SECRET)) {
