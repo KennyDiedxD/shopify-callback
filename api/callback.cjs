@@ -1,15 +1,5 @@
-// api/callback.cjs — Shopify OAuth + save token to Vercel KV (CommonJS)
-const crypto = require("crypto");
+﻿const crypto = require("crypto");
 const { kv } = require("@vercel/kv");
-
-function getCookie(req, name) {
-  const header = req.headers.cookie || "";
-  for (const part of header.split(/;\s*/)) {
-    const [k, ...rest] = part.split("=");
-    if (k === name) return decodeURIComponent(rest.join("="));
-  }
-  return "";
-}
 
 // Build a canonical query object from the request URL
 function parseQuery(reqUrl) {
@@ -25,53 +15,81 @@ function parseQuery(reqUrl) {
 // Verify HMAC from Shopify query params
 function validHmac(allQuery, secret) {
   const { hmac, signature, ...rest } = allQuery;
-
   const message = Object.keys(rest)
     .sort()
     .map(k => `${k}=${Array.isArray(rest[k]) ? rest[k].join(",") : rest[k]}`)
     .join("&");
-
   const digest = crypto.createHmac("sha256", secret).update(message).digest("hex");
-
-  // Shopify's query hmac is hex; compare safely
   const a = Buffer.from(digest, "hex");
   const b = Buffer.from((hmac || ""), "hex");
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+// Strict shop validator: <anything>.myshopify.com
+function isValidShop(shop) {
+  return typeof shop === "string" &&
+    /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shop);
+}
+
+// ensure the Shopify 'timestamp' is fresh (<= 300s)
+function isFresh(ts) {
+  const now = Math.floor(Date.now() / 1000);
+  const t = Number(ts || 0);
+  return Number.isFinite(t) && t > 0 && Math.abs(now - t) <= 300;
+}
+
+// Read a cookie by name from req.headers.cookie
+function getCookie(req, name) {
+  const header = req.headers.cookie || "";
+  for (const part of header.split(/;\s*/)) {
+    const [k, ...rest] = part.split("=");
+    if (k === name) return decodeURIComponent(rest.join("="));
+  }
+  return "";
+}
+
 module.exports = async (req, res) => {
   try {
     const q = parseQuery(req.url);
-    const { shop, code, hmac, state } = q;
+    const { shop, code, hmac, state, timestamp } = q;
 
-    // Direct-hit sanity check (helps while testing)
+    // 1) Basic presence
     if (!shop || !code || !hmac || !state) {
       res.statusCode = 400;
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       return res.end("Missing required query parameters.");
     }
 
-// Direct-hit guard can stay as-is above this point:
-// if (!shop || !code || !hmac || !state) { ... return; }
+    // 2) Shop sanity
+    if (!isValidShop(shop)) {
+      res.statusCode = 400;
+      return res.end("Invalid shop domain.");
+    }
 
-// NEW: validate state against cookie and then clear it
-const expected = getCookie(req, "shopify_state");
-if (!expected || state !== expected) {
-  res.statusCode = 403;
-  return res.end("Invalid state.");
-}
-// one-time: clear cookie
-res.setHeader("Set-Cookie", "shopify_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax");
+    // 3) Timestamp freshness (mitigate replay)
+    if (!isFresh(timestamp)) {
+      res.statusCode = 400;
+      return res.end("Stale timestamp.");
+    }
 
-
-
-    // Authenticity (query HMAC)
+    // 4) Authenticity (query HMAC) — MUST pass
     if (!validHmac(q, process.env.SHOPIFY_API_SECRET)) {
       res.statusCode = 403;
       return res.end("HMAC validation failed.");
     }
 
-    // Exchange authorization code for access token
+    // 5) STATE check (server-set cookie must match query state)
+    const cookieName = `shopify_state_${shop.replace(/\./g, "_")}`;
+    const expected = getCookie(req, cookieName);
+    if (!expected || state !== expected) {
+      res.statusCode = 403;
+      return res.end("Invalid state.");
+    }
+
+    // One-time: clear cookie (Path must match how it was set)
+    res.setHeader("Set-Cookie", `${cookieName}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
+
+    // 6) Exchange authorization code for access token
     const r = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -91,31 +109,14 @@ res.setHeader("Set-Cookie", "shopify_state=; Max-Age=0; Path=/; HttpOnly; Secure
     const tokenData = await r.json(); // { access_token, scope }
     const token = tokenData.access_token || "";
 
-    // Save per shop in Vercel KV
+    // 7) Save per shop in Vercel KV
     await kv.hset(`shop:${shop}`, {
       token,
       scope: tokenData.scope || "",
       installed_at: Date.now()
     });
 
-    // (Optional) Register uninstall webhook so you can delete the token later
-    // Requires write_webhooks scope if you enable it.
-    // await fetch(`https://${shop}/admin/api/2024-07/webhooks.json`, {
-    //   method: "POST",
-    //   headers: {
-    //     "Content-Type": "application/json",
-    //     "X-Shopify-Access-Token": token
-    //   },
-    //   body: JSON.stringify({
-    //     webhook: {
-    //       topic: "app/uninstalled",
-    //       address: "https://shopify-callback.vercel.app/api/webhooks-app-uninstalled",
-    //       format: "json"
-    //     }
-    //   })
-    // });
-
-    // Show a simple success page (or redirect to your app UI)
+    // 8) Show success (or redirect to your UI)
     const masked = token ? token.slice(0, 6) + "…(hidden)…" + token.slice(-4) : "N/A";
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.end(
@@ -126,7 +127,7 @@ res.setHeader("Set-Cookie", "shopify_state=; Max-Age=0; Path=/; HttpOnly; Secure
        <p style="color:#666">Saved in KV key <code>shop:${shop}</code>. For production, redirect to your app UI.</p>`
     );
 
-    // If you prefer a redirect, replace the last 3 lines with:
+    // Alternative redirect:
     // res.writeHead(302, { Location: `https://${shop}/admin/apps/${process.env.SHOPIFY_API_KEY}` });
     // res.end();
   } catch (e) {
