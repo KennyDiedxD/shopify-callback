@@ -2,6 +2,15 @@
 const crypto = require("crypto");
 const { kv } = require("@vercel/kv");
 
+function getCookie(req, name) {
+  const header = req.headers.cookie || "";
+  for (const part of header.split(/;\s*/)) {
+    const [k, ...rest] = part.split("=");
+    if (k === name) return decodeURIComponent(rest.join("="));
+  }
+  return "";
+}
+
 // Build a canonical query object from the request URL
 function parseQuery(reqUrl) {
   const url = new URL(reqUrl || "/api/callback", "https://dummy.host");
@@ -42,18 +51,18 @@ module.exports = async (req, res) => {
       return res.end("Missing required query parameters.");
     }
 
-    // CSRF protection — DEBUG: show exact mismatch
-function toHex(s){ return [...Buffer.from(String(s) || "", "utf8")].map(b=>b.toString(16).padStart(2,"0")).join(" "); }
+// Direct-hit guard can stay as-is above this point:
+// if (!shop || !code || !hmac || !state) { ... return; }
 
-if (!process.env.EXPECTED_STATE || state !== process.env.EXPECTED_STATE) {
+// NEW: validate state against cookie and then clear it
+const expected = getCookie(req, "shopify_state");
+if (!expected || state !== expected) {
   res.statusCode = 403;
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  return res.end(
-    `Invalid state. got="${state}" expected="${process.env.EXPECTED_STATE || "(unset)"}"\n` +
-    `len.got=${(state||"").length} len.exp=${(process.env.EXPECTED_STATE||"").length}\n` +
-    `hex.got=${toHex(state)}\nhex.exp=${toHex(process.env.EXPECTED_STATE)}`
-  );
+  return res.end("Invalid state.");
 }
+// one-time: clear cookie
+res.setHeader("Set-Cookie", "shopify_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax");
+
 
 
     // Authenticity (query HMAC)
