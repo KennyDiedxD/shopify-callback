@@ -42,11 +42,19 @@ module.exports = async (req, res) => {
       return res.end("Missing required query parameters.");
     }
 
-    // CSRF protection 
+    // CSRF protection — DEBUG: show exact mismatch
+function toHex(s){ return [...Buffer.from(String(s) || "", "utf8")].map(b=>b.toString(16).padStart(2,"0")).join(" "); }
+
 if (!process.env.EXPECTED_STATE || state !== process.env.EXPECTED_STATE) {
   res.statusCode = 403;
-  return res.end("Invalid state.");
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  return res.end(
+    `Invalid state. got="${state}" expected="${process.env.EXPECTED_STATE || "(unset)"}"\n` +
+    `len.got=${(state||"").length} len.exp=${(process.env.EXPECTED_STATE||"").length}\n` +
+    `hex.got=${toHex(state)}\nhex.exp=${toHex(process.env.EXPECTED_STATE)}`
+  );
 }
+
 
     // Authenticity (query HMAC)
     if (!validHmac(q, process.env.SHOPIFY_API_SECRET)) {
